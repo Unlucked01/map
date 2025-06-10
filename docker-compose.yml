@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # Backend сервис (FastAPI)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pgu-map-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_data:/app/data
+      - ./backend:/app
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=sqlite:///data/university_map.db
+    networks:
+      - pgu-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend сервис (Vue.js + Nginx)
+  frontend:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+    container_name: pgu-map-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - pgu-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Дополнительно: база данных PostgreSQL (если захотите мигрировать с SQLite)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: pgu-map-db
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_DB: university_map
+  #     POSTGRES_USER: pgu_user
+  #     POSTGRES_PASSWORD: pgu_password
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   networks:
+  #     - pgu-network
+
+# Volumes для постоянного хранения данных
+volumes:
+  backend_data:
+    driver: local
+  # postgres_data:
+  #   driver: local
+
+# Сеть для связи между контейнерами
+networks:
+  pgu-network:
+    driver: bridge 
