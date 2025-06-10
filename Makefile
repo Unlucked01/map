@@ -52,6 +52,36 @@ clean-all:
 	docker system prune -af
 	docker volume prune -f
 
+# ===== ПРОДАКШН ДЕПЛОЙ =====
+# Деплой на продакшн сервер
+deploy:
+	@echo "🚀 Деплой на продакшн сервер..."
+	chmod +x deploy.sh
+	./deploy.sh
+
+# Продакшн запуск
+prod-up:
+	@echo "🏭 Запуск продакшн версии..."
+	docker-compose -f docker-compose.prod.yml up -d
+	@echo "✅ Продакшн запущен на https://unl-map.duckdns.org"
+
+# Продакшн остановка  
+prod-down:
+	@echo "🛑 Остановка продакшн версии..."
+	docker-compose -f docker-compose.prod.yml down
+
+# Продакшн логи
+prod-logs:
+	@echo "📋 Логи продакшн версии..."
+	docker-compose -f docker-compose.prod.yml logs -f
+
+# Обновление SSL сертификата
+renew-ssl:
+	@echo "🔒 Обновление SSL сертификата..."
+	docker-compose -f docker-compose.prod.yml run --rm certbot renew
+	docker-compose -f docker-compose.prod.yml restart nginx
+	@echo "✅ SSL сертификат обновлен"
+
 # Быстрые команды
 install: build up
 dev-install: 

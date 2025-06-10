@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: pgu-map-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - certbot_data:/var/www/certbot:ro
+      - ssl_certificates:/etc/letsencrypt:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - pgu-prod-network
+
+  # Certbot для SSL сертификатов
+  certbot:
+    image: certbot/certbot:latest
+    container_name: pgu-map-certbot
+    volumes:
+      - certbot_data:/var/www/certbot
+      - ssl_certificates:/etc/letsencrypt
+    command: certonly --webroot --webroot-path=/var/www/certbot --email unl-map@ddns.com --agree-tos --no-eff-email -d unl-map.duckdns.org
+    depends_on:
+      - nginx
+
+  # Backend сервис (FastAPI)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pgu-map-backend-prod
+    restart: unless-stopped
+    expose:
+      - "8000"
+    volumes:
+      - backend_prod_data:/app/data
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=sqlite:///data/university_map.db
+      - ENVIRONMENT=production
+    networks:
+      - pgu-prod-network
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend сервис (Vue.js + Nginx)
+  frontend:
+    build:
+      context: ./front
+      dockerfile: Dockerfile.prod
+    container_name: pgu-map-frontend-prod
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      - backend
+    networks:
+      - pgu-prod-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  backend_prod_data:
+    driver: local
+  certbot_data:
+    driver: local
+  ssl_certificates:
+    driver: local
+
+networks:
+  pgu-prod-network:
+    driver: bridge 
