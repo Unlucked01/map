@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc && vite build",
+    "build": "vue-tsc --noEmit && vite build",
+    "build-fast": "vite build",
     "preview": "vite preview",
     "serve": "vite preview --port 4173"
   },

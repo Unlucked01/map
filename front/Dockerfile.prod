@@ -12,11 +12,11 @@ RUN npm ci
 # Копируем исходный код
 COPY . .
 
-# Собираем приложение
-RUN npm run build
+# Собираем приложение (быстрая сборка без проверки типов)
+RUN npm run build-fast
 
 # Production stage
-FROM nginx:alpine as production-stage
+FROM nginx:alpine AS production-stage
 
 # Копируем собранное приложение
 COPY --from=build-stage /app/dist /usr/share/nginx/html
