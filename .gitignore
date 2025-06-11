@@ -4,3 +4,7 @@ backend/__pycache__/
 backend/venv/
 
 .idea
+
+backend/university_map.db
+
+front/dist/*

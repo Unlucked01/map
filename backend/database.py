@@ -2,7 +2,7 @@ import sqlite3
 import json
 import logging
 from typing import List, Optional, Dict, Any
-from models import Building
+from models import Building, Room, RoomType
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,11 @@ class Database:
                     floor_count INTEGER,
                     year_built INTEGER,
                     departments TEXT,  -- JSON строка
-                    amenities TEXT     -- JSON строка
+                    amenities TEXT,    -- JSON строка
+                    rooms TEXT,        -- JSON строка для аудиторий
+                    accessible BOOLEAN DEFAULT 0,
+                    has_elevator BOOLEAN DEFAULT 0,
+                    has_parking BOOLEAN DEFAULT 0
                 )
             """)
             conn.commit()
@@ -61,7 +65,17 @@ class Database:
                 "floor_count": 4,
                 "year_built": 1916,
                 "departments": ["Ректорат", "Приемная комиссия", "Деканаты"],
-                "amenities": ["Wi-Fi", "Кафе", "Банкомат", "Медпункт", "Библиотека"]
+                "amenities": ["Wi-Fi", "Кафе", "Банкомат", "Медпункт", "Библиотека"],
+                "accessible": True,
+                "has_elevator": True,
+                "has_parking": True,
+                "rooms": [
+                    {"number": "101", "floor": 1, "type": "office", "capacity": 10, "equipment": ["Компьютер", "Проектор"], "accessible": True},
+                    {"number": "102", "floor": 1, "type": "classroom", "capacity": 30, "equipment": ["Доска", "Проектор"], "accessible": True},
+                    {"number": "103", "floor": 1, "type": "toilet", "accessible": True},
+                    {"number": "201", "floor": 2, "type": "auditorium", "capacity": 100, "equipment": ["Микрофоны", "Проектор", "Звуковая система"], "accessible": False},
+                    {"number": "202", "floor": 2, "type": "library", "capacity": 50, "equipment": ["Wi-Fi", "Компьютеры"], "accessible": True}
+                ]
             },
             {
                 "id": "3",
@@ -73,18 +87,33 @@ class Database:
                 "floor_count": 4,
                 "year_built": 1975,
                 "departments": ["Физический факультет", "Математический факультет"],
-                "amenities": ["Лаборатории", "Компьютерные классы", "Wi-Fi"]
+                "amenities": ["Лаборатории", "Компьютерные классы", "Wi-Fi"],
+                "accessible": True,
+                "has_elevator": False,
+                "has_parking": True,
+                "rooms": [
+                    {"number": "301", "floor": 3, "type": "lab", "capacity": 20, "equipment": ["Лабораторное оборудование", "Компьютеры"], "accessible": True},
+                    {"number": "302", "floor": 3, "type": "classroom", "capacity": 25, "equipment": ["Проектор", "Интерактивная доска"], "accessible": True},
+                    {"number": "310", "floor": 3, "type": "toilet", "accessible": True}
+                ]
             },
             {
                 "id": "4",
                 "name": "Корпус 4",
                 "type": "academic", 
-                "description": "Современный учебный корпус",
+                "description": "Учебный корпус факультета",
                 "coordinates": {"x": 180, "y": 120},
                 "floor_count": 5,
                 "year_built": 1985,
                 "departments": ["Химический факультет", "Биологический факультет"],
-                "amenities": ["Лаборатории", "Аудитории", "Библиотека"]
+                "amenities": ["Лаборатории", "Аудитории", "Библиотека"],
+                "accessible": True,
+                "has_elevator": True,
+                "has_parking": False,
+                "rooms": [
+                    {"number": "401", "floor": 4, "type": "lab", "capacity": 15, "equipment": ["Химическое оборудование", "Вытяжки"], "accessible": False},
+                    {"number": "402", "floor": 4, "type": "classroom", "capacity": 30, "equipment": ["Проектор"], "accessible": True}
+                ]
             },
             {
                 "id": "6",
@@ -95,18 +124,32 @@ class Database:
                 "floor_count": 3,
                 "year_built": 1980,
                 "departments": ["Филологический факультет", "Исторический факультет"],
-                "amenities": ["Аудитории", "Конференц-залы", "Wi-Fi"]
+                "amenities": ["Аудитории", "Конференц-залы", "Wi-Fi"],
+                "accessible": False,
+                "has_elevator": False,
+                "has_parking": True,
+                "rooms": [
+                    {"number": "601", "floor": 6, "type": "classroom", "capacity": 40, "equipment": ["Проектор", "Звуковая система"], "accessible": False},
+                    {"number": "602", "floor": 6, "type": "auditorium", "capacity": 80, "equipment": ["Микрофоны", "Проектор"], "accessible": False}
+                ]
             },
             {
                 "id": "7",
                 "name": "Корпус 7",
                 "type": "academic",
-                "description": "Корпус экономического факультета",
+                "description": "Корпус факультета вычислительной техники",
                 "coordinates": {"x": 250, "y": 140},
                 "floor_count": 4,
                 "year_built": 1990,
                 "departments": ["Экономический факультет", "Юридический факультет"],
-                "amenities": ["Аудитории", "Компьютерные классы", "Мультимедиа"]
+                "amenities": ["Аудитории", "Компьютерные классы", "Мультимедиа"],
+                "accessible": True,
+                "has_elevator": False,
+                "has_parking": True,
+                "rooms": [
+                    {"number": "701", "floor": 7, "type": "classroom", "capacity": 35, "equipment": ["Компьютеры", "Проектор"], "accessible": True},
+                    {"number": "702", "floor": 7, "type": "classroom", "capacity": 30, "equipment": ["Интерактивная доска"], "accessible": True}
+                ]
             },
             {
                 "id": "8", 
@@ -117,7 +160,15 @@ class Database:
                 "floor_count": 6,
                 "year_built": 2005,
                 "departments": ["IT факультет", "Инженерный факультет"],
-                "amenities": ["Современные аудитории", "IT лаборатории", "Коворкинг"]
+                "amenities": ["Современные аудитории", "IT лаборатории", "Коворкинг"],
+                "accessible": True,
+                "has_elevator": True,
+                "has_parking": True,
+                "rooms": [
+                    {"number": "801", "floor": 8, "type": "lab", "capacity": 25, "equipment": ["Современные компьютеры", "Сервер"], "accessible": True},
+                    {"number": "802", "floor": 8, "type": "classroom", "capacity": 40, "equipment": ["Smart TV", "VR оборудование"], "accessible": True},
+                    {"number": "803", "floor": 8, "type": "office", "capacity": 5, "equipment": ["Рабочие станции"], "accessible": True}
+                ]
             },
             {
                 "id": "О-1",
@@ -127,7 +178,11 @@ class Database:
                 "coordinates": {"x": 300, "y": 250},
                 "floor_count": 9,
                 "year_built": 1970,
-                "amenities": ["Прачечная", "Кухня", "Комната отдыха", "Интернет", "Охрана"]
+                "amenities": ["Прачечная", "Кухня", "Комната отдыха", "Интернет", "Охрана"],
+                "accessible": False,
+                "has_elevator": False,
+                "has_parking": False,
+                "rooms": []
             },
             {
                 "id": "О-2",
@@ -137,7 +192,11 @@ class Database:
                 "coordinates": {"x": 320, "y": 280},
                 "floor_count": 9,
                 "year_built": 1975,
-                "amenities": ["Прачечная", "Кухня", "Спортзал", "Интернет"]
+                "amenities": ["Прачечная", "Кухня", "Спортзал", "Интернет"],
+                "accessible": False,
+                "has_elevator": False,
+                "has_parking": False,
+                "rooms": []
             },
             {
                 "id": "О-4",
@@ -147,7 +206,11 @@ class Database:
                 "coordinates": {"x": 340, "y": 260},
                 "floor_count": 5,
                 "year_built": 1985,
-                "amenities": ["Детская площадка", "Прачечная", "Кухня", "Парковка"]
+                "amenities": ["Детская площадка", "Прачечная", "Кухня", "Парковка"],
+                "accessible": True,
+                "has_elevator": False,
+                "has_parking": True,
+                "rooms": []
             },
             {
                 "id": "О-5",
@@ -157,7 +220,11 @@ class Database:
                 "coordinates": {"x": 360, "y": 240},
                 "floor_count": 12,
                 "year_built": 2000,
-                "amenities": ["Фитнес-зал", "Кафе", "Прачечная", "Wi-Fi", "Лифты"]
+                "amenities": ["Фитнес-зал", "Кафе", "Прачечная", "Wi-Fi", "Лифты"],
+                "accessible": True,
+                "has_elevator": True,
+                "has_parking": True,
+                "rooms": []
             },
             {
                 "id": "C",
@@ -167,7 +234,14 @@ class Database:
                 "coordinates": {"x": 50, "y": 300},
                 "floor_count": 1,
                 "year_built": 1965,
-                "amenities": ["Футбольное поле", "Беговые дорожки", "Трибуны", "Раздевалки"]
+                "amenities": ["Футбольное поле", "Беговые дорожки", "Трибуны", "Раздевалки"],
+                "accessible": True,
+                "has_elevator": False,
+                "has_parking": True,
+                "rooms": [
+                    {"number": "Р1", "floor": 1, "type": "other", "capacity": 20, "equipment": ["Душ", "Шкафчики"], "accessible": True},
+                    {"number": "Р2", "floor": 1, "type": "other", "capacity": 20, "equipment": ["Душ", "Шкафчики"], "accessible": True}
+                ]
             },
             {
                 "id": "СК",
@@ -178,7 +252,14 @@ class Database:
                 "floor_count": 2,
                 "year_built": 1980,
                 "departments": ["Кафедра физической культуры"],
-                "amenities": ["Спортзалы", "Тренажеры", "Медкабинет"]
+                "amenities": ["Спортзалы", "Тренажеры", "Медкабинет"],
+                "accessible": True,
+                "has_elevator": False,
+                "has_parking": False,
+                "rooms": [
+                    {"number": "Зал1", "floor": 1, "type": "other", "capacity": 50, "equipment": ["Спортивный инвентарь"], "accessible": True},
+                    {"number": "Зал2", "floor": 2, "type": "other", "capacity": 30, "equipment": ["Тренажеры"], "accessible": False}
+                ]
             },
             {
                 "id": "D",
@@ -188,7 +269,14 @@ class Database:
                 "coordinates": {"x": 120, "y": 80},
                 "floor_count": 2,
                 "year_built": 1960,
-                "amenities": ["Горячее питание", "Буфет", "Кафе", "Летняя терраса"]
+                "amenities": ["Горячее питание", "Буфет", "Кафе", "Летняя терраса"],
+                "accessible": True,
+                "has_elevator": False,
+                "has_parking": False,
+                "rooms": [
+                    {"number": "Зал", "floor": 1, "type": "cafe", "capacity": 100, "equipment": ["Столы", "Кухня"], "accessible": True},
+                    {"number": "Буфет", "floor": 1, "type": "cafe", "capacity": 20, "equipment": ["Касса"], "accessible": True}
+                ]
             }
         ]
         
@@ -197,8 +285,8 @@ class Database:
             for building_data in initial_buildings:
                 conn.execute("""
                     INSERT INTO buildings 
-                    (id, name, type, description, image_url, coordinates, floor_count, year_built, departments, amenities)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, name, type, description, image_url, coordinates, floor_count, year_built, departments, amenities, rooms, accessible, has_elevator, has_parking)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     building_data["id"],
                     building_data["name"],
@@ -209,7 +297,11 @@ class Database:
                     building_data.get("floor_count"),
                     building_data.get("year_built"),
                     json.dumps(building_data.get("departments", [])),
-                    json.dumps(building_data.get("amenities", []))
+                    json.dumps(building_data.get("amenities", [])),
+                    json.dumps(building_data.get("rooms", [])),
+                    building_data.get("accessible", False),
+                    building_data.get("has_elevator", False),
+                    building_data.get("has_parking", False)
                 ))
             conn.commit()
             logger.info(f"Добавлено {len(initial_buildings)} зданий в базу данных")
@@ -253,6 +345,11 @@ class Database:
                     building_data["departments"] = json.loads(building_data["departments"])
                 if building_data["amenities"]:
                     building_data["amenities"] = json.loads(building_data["amenities"])
+                if building_data["rooms"]:
+                    rooms_data = json.loads(building_data["rooms"])
+                    building_data["rooms"] = [Room(**room) for room in rooms_data]
+                else:
+                    building_data["rooms"] = []
                 
                 buildings.append(Building(**building_data))
             
@@ -276,6 +373,11 @@ class Database:
                 building_data["departments"] = json.loads(building_data["departments"])
             if building_data["amenities"]:
                 building_data["amenities"] = json.loads(building_data["amenities"])
+            if building_data["rooms"]:
+                rooms_data = json.loads(building_data["rooms"])
+                building_data["rooms"] = [Room(**room) for room in rooms_data]
+            else:
+                building_data["rooms"] = []
             
             return Building(**building_data)
     

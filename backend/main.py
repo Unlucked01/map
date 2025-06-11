@@ -7,8 +7,8 @@ from contextlib import asynccontextmanager
 import logging
 
 # Импорты новых модулей
-from models import Building, BuildingResponse
-from controllers import BuildingController
+from models import Building, BuildingResponse, SearchResponse
+from controllers import BuildingController, SearchController
 from database import db
 
 # Настройка логирования
@@ -111,6 +111,38 @@ async def get_building_types():
     Возвращает список всех типов зданий с количеством зданий каждого типа
     """
     return await BuildingController.get_building_types()
+
+@app.get("/api/search", response_model=SearchResponse)
+async def advanced_search(
+    q: str = Query(..., description="Поисковый запрос"),
+    limit: int = Query(10, ge=1, le=50, description="Максимальное количество результатов")
+):
+    """
+    Расширенный поиск по зданиям, аудиториям и услугам
+    
+    - **q**: Поисковый запрос (название здания, номер аудитории, услуга)
+    - **limit**: Максимальное количество результатов (по умолчанию 10, максимум 50)
+    
+    Поддерживаемые типы поиска:
+    - Поиск по названию здания
+    - Поиск по номеру аудитории (например: "101", "аудитория 202")
+    - Поиск по услугам и удобствам (например: "кафе", "туалет", "библиотека")
+    """
+    return await SearchController.advanced_search(q, limit)
+
+@app.get("/api/suggestions", response_model=List[str])
+async def get_search_suggestions():
+    """
+    Получение подсказок для поиска
+    
+    Возвращает список популярных поисковых запросов
+    """
+    suggestions = [
+        "столовая", "библиотека", "аудитория 101", "туалет", 
+        "кафе", "спортзал", "главный корпус", "общежитие",
+        "деканат", "ректорат", "лифт", "парковка"
+    ]
+    return suggestions
 
 # Обработчики ошибок
 @app.exception_handler(404)

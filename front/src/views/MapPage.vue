@@ -1,15 +1,19 @@
 <template>
   <div class="map-page h-screen flex flex-col bg-gray-50">
     <!-- Хэдер -->
-    <header class="bg-white shadow-sm border-b border-gray-200 z-30">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <header class="relative bg-gradient-to-r from-blue-600 via-purple-600 to-blue-800 shadow-2xl z-30">
+      <!-- Декоративная обводка -->
+      <div class="absolute inset-0 bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-blue-700/20 backdrop-blur-sm"></div>
+      <div class="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent"></div>
+      
+      <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <!-- Десктопная версия -->
         <div class="hidden md:flex items-center justify-between h-16">
           <!-- Логотип -->
           <div class="flex items-center">
             <div class="flex-shrink-0">
-              <h1 class="text-xl font-bold text-gray-900">ПГУ</h1>
-              <p class="text-sm text-gray-500">Интерактивная карта</p>
+              <h1 class="text-xl font-bold text-white drop-shadow-lg">ПГУ</h1>
+              <p class="text-sm text-blue-100 font-medium">Интерактивная карта</p>
             </div>
           </div>
 
@@ -22,10 +26,10 @@
         <!-- Мобильная версия -->
         <div class="md:hidden">
           <!-- Первая строка: логотип -->
-          <div class="flex items-center justify-center h-14 border-b border-gray-100">
+          <div class="flex items-center justify-center h-14 border-b border-white/20">
             <div class="text-center">
-              <h1 class="text-lg font-bold text-gray-900">ПГУ</h1>
-              <p class="text-xs text-gray-500">Интерактивная карта</p>
+              <h1 class="text-lg font-bold text-white drop-shadow-lg">ПГУ</h1>
+              <p class="text-xs text-blue-100 font-medium">Интерактивная карта</p>
             </div>
           </div>
           
@@ -51,6 +55,7 @@
         <MapViewer
           :show-minimap="showMinimap"
           @building-click="onBuildingClick"
+          ref="mapViewer"
         />
       </div>
 
@@ -165,6 +170,7 @@ const buildingsStore = useBuildingsStore()
 const showMinimap = ref(false)
 const showMobileCard = ref(false)
 const isMobile = ref(false)
+const mapViewer = ref<InstanceType<typeof MapViewer> | null>(null)
 
 // Computed
 const selectedBuilding = computed(() => buildingsStore.selectedBuilding)
@@ -191,17 +197,20 @@ const onBuildingClick = async (buildingId: string) => {
 }
 
 const onBuildingSelect = (building: Building) => {
-  // При поиске только подсвечиваем здание на карте, но не открываем карточку
   console.log('🔍 Поиск здания:', building.name, building.id)
   
-  // Эмитим событие для подсветки здания на карте
-  const mapEvent = new CustomEvent('highlightBuilding', { 
-    detail: { buildingId: building.id } 
-  })
-  window.dispatchEvent(mapEvent)
+  // Используем новый метод навигации к зданию с анимацией
+  if (mapViewer.value) {
+    mapViewer.value.navigateToBuilding(building.id)
+  }
   
-  // НЕ открываем карточку автоматически при поиске
-  // Пользователь может кликнуть на здание, если хочет увидеть подробную информацию
+  // Устанавливаем выбранное здание в store для подсветки
+  buildingsStore.selectBuilding(building)
+  
+  // На мобильных устройствах показываем карточку
+  if (isMobile.value) {
+    showMobileCard.value = true
+  }
 }
 
 const closeBuilding = () => {
@@ -211,14 +220,6 @@ const closeBuilding = () => {
 
 const clearError = () => {
   buildingsStore.error = null
-}
-
-const toggleFullscreen = () => {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen()
-  } else {
-    document.exitFullscreen()
-  }
 }
 
 const toggleMinimap = () => {

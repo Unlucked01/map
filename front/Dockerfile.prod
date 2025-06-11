@@ -1,13 +1,18 @@
 # Build stage
-FROM node:18-alpine AS build-stage
+FROM --platform=linux/amd64 node:20-alpine AS build-stage
 
 WORKDIR /app
+
+# Установка необходимых пакетов для сборки
+RUN apk add --update --no-cache python3 make g++
 
 # Копируем package files
 COPY package*.json ./
 
-# Устанавливаем все зависимости (включая dev для сборки)
-RUN npm ci
+# Полная переустановка зависимостей
+RUN rm -rf node_modules package-lock.json && \
+    npm install --production=false && \
+    npm cache clean --force
 
 # Копируем исходный код
 COPY . .
@@ -16,7 +21,7 @@ COPY . .
 RUN npm run build-fast
 
 # Production stage
-FROM nginx:alpine AS production-stage
+FROM --platform=linux/amd64 nginx:alpine AS production-stage
 
 # Копируем собранное приложение
 COPY --from=build-stage /app/dist /usr/share/nginx/html

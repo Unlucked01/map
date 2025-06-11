@@ -141,32 +141,63 @@ const isAnimating = ref(false)
 
 // Отслеживание выбранного типа для подсветки
 const selectedType = computed(() => buildingsStore.selectedType)
+const selectedBuilding = computed(() => buildingsStore.selectedBuilding)
 
 // Computed
 const filteredBuildings = computed(() => buildingsStore.filteredBuildings)
 
-// Загрузка SVG БЕЗ агрессивной оптимизации
+// Оптимизированная загрузка SVG с кэшированием
 const loadSVG = async () => {
   try {
     loading.value = true
     console.log('Загружаем SVG...')
     
-    // Загружаем SVG файл
-    const response = await fetch('/map.svg')
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+    // Проверяем кэш браузера
+    const cacheKey = 'map_svg_v1'
+    const cachedSvg = sessionStorage.getItem(cacheKey)
+    
+    let svgText: string
+    
+    if (cachedSvg) {
+      console.log('Используем кэшированный SVG')
+      svgText = cachedSvg
+    } else {
+      // Загружаем SVG файл
+      const response = await fetch('/map.svg')
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      svgText = await response.text()
+      console.log('SVG загружен, размер:', svgText.length)
+      
+      // Оптимизация SVG для улучшения производительности
+      svgText = svgText
+        .replace(/<!--[\s\S]*?-->/g, '') // Удаляем комментарии
+        .replace(/\s+/g, ' ') // Минифицируем пробелы
+        .replace(/>\s+</g, '><') // Удаляем пробелы между тегами
+        .trim()
+      
+      // Кэшируем в сессии
+      try {
+        sessionStorage.setItem(cacheKey, svgText)
+      } catch (e) {
+        console.warn('Не удалось кэшировать SVG:', e)
+      }
     }
-    
-    let svgText = await response.text()
-    console.log('SVG загружен, размер:', svgText.length)
-    
-    // Минимальная оптимизация - только удаляем комментарии
-    svgText = svgText.replace(/<!--[\s\S]*?-->/g, '')
     
     svgContent.value = svgText
     
-    await nextTick()
-    setupSVGInteractions()
+    // Используем requestIdleCallback для настройки интерактивности
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => {
+        setupSVGInteractions()
+      })
+    } else {
+      setTimeout(() => {
+        setupSVGInteractions()
+      }, 0)
+    }
     
     console.log('SVG настроен')
     
@@ -420,24 +451,69 @@ const updateBuildingHighlights = () => {
     const element = building as HTMLElement
     const buildingType = element.getAttribute('data-type')
     const buildingName = element.getAttribute('data-name')
+    const buildingId = element.getAttribute('data-id')
     
     // Убираем предыдущие классы фильтрации
-    element.classList.remove('filtered-out', 'filtered-in')
+    element.classList.remove('filtered-out', 'filtered-in', 'type-highlighted')
+    
+    // Проверяем, выбрано ли это здание
+    const isSelected = selectedBuilding.value?.id === buildingId
     
     if (selectedType.value === 'all') {
       // Показываем все здания
       element.classList.add('filtered-in')
-      console.log(`Здание "${buildingName}" (${buildingType}) - показываем (все)`)
+      if (isSelected) {
+        element.classList.add('selected')
+      }
     } else if (buildingType === selectedType.value) {
       // Подсвечиваем здания выбранного типа
-      element.classList.add('filtered-in')
-      console.log(`Здание "${buildingName}" (${buildingType}) - подсвечиваем (совпадает)`)
+      element.classList.add('filtered-in', 'type-highlighted')
+      if (isSelected) {
+        element.classList.add('selected')
+      }
+      console.log(`Здание "${buildingName}" (${buildingType}) - подсвечиваем`)
     } else {
       // Затемняем остальные здания
       element.classList.add('filtered-out')
-      console.log(`Здание "${buildingName}" (${buildingType}) - затемняем (не совпадает)`)
+      console.log(`Здание "${buildingName}" (${buildingType}) - затемняем`)
     }
   })
+  
+  // Обновляем текстовые элементы
+  updateTextVisibility()
+}
+
+// Обновление видимости текста зданий
+const updateTextVisibility = () => {
+  if (!mapContainer.value) return
+  
+  try {
+    const textElements = mapContainer.value.querySelectorAll('[id$="-text"]')
+    
+    textElements.forEach((textEl: Element) => {
+      const htmlTextEl = textEl as HTMLElement
+      const buildingId = htmlTextEl.id.replace('-text', '')
+      const isSelected = selectedBuilding.value?.id === buildingId
+      const isHighlighted = selectedType.value === buildingId
+      const isSearchResult = buildingsStore.searchResults.some(result => result.building.id === buildingId)
+      
+      // Показываем текст только для выбранного, подсвеченного при ховере или найденных зданий
+      // При зуме больше 1.5 показываем все тексты
+      const shouldShow = isSelected || isHighlighted || isSearchResult || scale.value > 1.5
+      
+      if (shouldShow) {
+        htmlTextEl.style.opacity = '1'
+        htmlTextEl.style.transform = 'scale(1)'
+        htmlTextEl.style.pointerEvents = 'none'
+      } else {
+        htmlTextEl.style.opacity = '0'
+        htmlTextEl.style.transform = 'scale(0.8)'
+        htmlTextEl.style.pointerEvents = 'none'
+      }
+    })
+  } catch (error) {
+    console.error('Ошибка обновления видимости текста:', error)
+  }
 }
 
 // Обработка клика по карте (не по зданию)
@@ -468,8 +544,6 @@ const resetZoom = () => {
   panY.value = 0
   console.log('Reset Zoom')
 }
-
-
 
 // Инициализация миникарты
 const initMinimap = () => {
@@ -594,6 +668,16 @@ watch([scale, panX, panY], () => {
   updateMinimap()
 })
 
+// Watcher для обновления видимости текста при изменении масштаба
+watch(scale, () => {
+  updateTextVisibility()
+})
+
+// Watcher для обновления подсветки при выборе здания
+watch(selectedBuilding, () => {
+  updateBuildingHighlights()
+})
+
 // Функция для подсветки здания при поиске
 const highlightSearchedBuilding = (buildingId: string) => {
   console.log('🎯 Подсвечиваем найденное здание:', buildingId)
@@ -601,27 +685,95 @@ const highlightSearchedBuilding = (buildingId: string) => {
   const svgElement = mapContainer.value?.querySelector('svg')
   if (!svgElement) return
   
-  const buildings = svgElement.querySelectorAll('[data-id]')
-  
-  // Убираем предыдущие выделения
-  buildings.forEach(building => {
-    building.classList.remove('search-highlighted')
+  // Убираем подсветку с других зданий
+  const allBuildings = svgElement.querySelectorAll('[data-id]')
+  allBuildings.forEach(building => {
+    building.classList.remove('searched', 'selected')
   })
   
-  // Находим и подсвечиваем нужное здание
-  const targetBuilding = svgElement.querySelector(`[data-id="${buildingId}"]`)
+  // Находим нужное здание
+  const targetBuilding = svgElement.querySelector(`[data-id="${buildingId}"]`) as SVGElement
   if (targetBuilding) {
-    targetBuilding.classList.add('search-highlighted')
-    console.log('✨ Здание подсвечено:', targetBuilding.getAttribute('data-name'))
+    targetBuilding.classList.add('searched', 'selected')
     
-    // Автоматически убираем подсветку через 5 секунд
-    setTimeout(() => {
-      targetBuilding.classList.remove('search-highlighted')
-    }, 5000)
-  } else {
-    console.warn('Здание не найдено на карте:', buildingId)
+    // Анимированный переход к зданию
+    animateToBuilding(targetBuilding)
   }
 }
+
+// Анимированный переход к зданию
+const animateToBuilding = (buildingElement: SVGElement) => {
+  try {
+    const bbox = (buildingElement as any).getBBox()
+    const buildingCenterX = bbox.x + bbox.width / 2
+    const buildingCenterY = bbox.y + bbox.height / 2
+    
+    if (!mapContainer.value) return
+    
+    const containerRect = mapContainer.value.getBoundingClientRect()
+    const containerCenterX = containerRect.width / 2
+    const containerCenterY = containerRect.height / 2
+    
+    // Вычисляем нужный сдвиг чтобы центрировать здание
+    const targetPanX = containerCenterX - (buildingCenterX * scale.value)
+    const targetPanY = containerCenterY - (buildingCenterY * scale.value)
+    
+    // Анимация перехода
+    isAnimating.value = true
+    
+    const startPanX = panX.value
+    const startPanY = panY.value
+    const startScale = scale.value
+    
+    // Уменьшенное и более разумное масштабирование
+    const targetScale = Math.max(1.2, Math.min(2, startScale * 1.3))
+    
+    const duration = 600 // Уменьшено с 800мс до 600мс
+    const startTime = performance.now()
+    
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      
+      // Более мягкая easing function
+      const easeProgress = progress < 0.5 
+        ? 2 * progress * progress 
+        : 1 - Math.pow(-2 * progress + 2, 2) / 2
+      
+      // Интерполяция значений
+      panX.value = startPanX + (targetPanX - startPanX) * easeProgress
+      panY.value = startPanY + (targetPanY - startPanY) * easeProgress
+      scale.value = startScale + (targetScale - startScale) * easeProgress
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate)
+      } else {
+        isAnimating.value = false
+        console.log('Анимация завершена')
+      }
+    }
+    
+    requestAnimationFrame(animate)
+    
+  } catch (error) {
+    console.error('Ошибка анимации к зданию:', error)
+    isAnimating.value = false
+  }
+}
+
+// Публичный метод для навигации к зданию (используется из родительского компонента)
+const navigateToBuilding = (buildingId: string) => {
+  console.log('Навигация к зданию:', buildingId)
+  highlightSearchedBuilding(buildingId)
+}
+
+// Экспортируем метод для использования в родительском компоненте
+defineExpose({
+  navigateToBuilding,
+  resetZoom,
+  zoomIn,
+  zoomOut
+})
 
 // Lifecycle
 onMounted(() => {
@@ -653,108 +805,188 @@ onUnmounted(() => {
   will-change: transform;
   backface-visibility: hidden;
   perspective: 1000px;
+  transform: translateZ(0);
 }
 
-/* Стили для интерактивных зданий */
+/* Оптимизация для браузеров */
+.map-container {
+  contain: layout style paint;
+  isolation: isolate;
+}
+
+/* Оптимизация SVG для лучшей производительности */
+:deep(.map-svg) {
+  shape-rendering: geometricPrecision;
+  text-rendering: optimizeSpeed;
+}
+
+/* Отключение GPU-ускорения для некоторых элементов для экономии памяти */
+@media (max-width: 768px) {
+  :deep(.map-svg [data-id]) {
+    will-change: auto;
+  }
+  
+  :deep(.map-svg [data-id]:hover) {
+    transform: none !important;
+  }
+}
+
+/* Стили для интерактивных зданий с тонкой обводкой */
 :deep(.map-svg [data-id]) {
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease-out;
+  will-change: transform, stroke-width, filter;
+  stroke-width: 1;
+  stroke: #6b7280;
+  fill: #e5e7eb;
 }
 
-:deep(.map-svg [data-id]:hover),
-:deep(.map-svg [data-id].highlighted) {
-  filter: drop-shadow(0 0 15px rgba(59, 130, 246, 0.8));
-  stroke: #3b82f6 !important;
-  stroke-width: 5 !important;
-  stroke-opacity: 1 !important;
+/* Оптимизированные стили для hover только на desktop */
+@media (hover: hover) {
+  :deep(.map-svg [data-id]:hover),
+  :deep(.map-svg [data-id].highlighted) {
+    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.6));
+    stroke: #3b82f6 !important;
+    stroke-width: 2 !important;
+    stroke-opacity: 1 !important;
+  }
 }
 
 :deep(.map-svg [data-id].selected) {
-  filter: drop-shadow(0 0 25px rgba(29, 78, 216, 1));
+  filter: drop-shadow(0 0 12px rgba(29, 78, 216, 0.8));
   stroke: #1d4ed8 !important;
-  stroke-width: 6 !important;
+  stroke-width: 3 !important;
   stroke-opacity: 1 !important;
 }
 
 :deep(.map-svg [data-id].search-highlighted) {
-  filter: drop-shadow(0 0 30px rgba(255, 215, 0, 1));
+  filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.8));
   stroke: #ffd700 !important;
-  stroke-width: 8 !important;
+  stroke-width: 4 !important;
   stroke-opacity: 1 !important;
   animation: search-pulse 2s ease-in-out infinite;
 }
 
-/* Стили для фильтрации - СПЛОШНАЯ ПОДСВЕТКА */
+/* Стили для фильтрации - оптимизированная подсветка */
 :deep(.map-svg [data-id].filtered-in) {
   opacity: 1 !important;
-  stroke-width: 6 !important;
+  stroke-width: 2 !important;
   stroke-opacity: 1 !important;
 }
 
 :deep(.map-svg [data-id].filtered-out) {
-  opacity: 0.2 !important;
+  opacity: 0.3 !important;
   stroke: #9ca3af !important;
-  stroke-width: 1 !important;
+  stroke-width: 0.5 !important;
   stroke-opacity: 0.4 !important;
-  filter: grayscale(0.7);
+  filter: grayscale(0.6);
+}
+
+/* Стили для подсветки найденных зданий */
+:deep(.map-svg [data-id].searched) {
+  filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) !important;
+  stroke: #ffd700 !important;
+  stroke-width: 4 !important;
+  stroke-opacity: 1 !important;
+  animation: search-pulse 2s ease-in-out infinite;
+}
+
+/* Стили для подсветки по типу */
+:deep(.map-svg [data-id].type-highlighted) {
+  opacity: 1 !important;
+  stroke-width: 2.5 !important;
+  stroke-opacity: 1 !important;
+  transition: all 0.2s ease;
 }
 
 /* Сплошная подсветка для разных типов зданий при фильтрации */
+:deep(.map-svg [data-type="academic"].type-highlighted),
 :deep(.map-svg [data-type="academic"].filtered-in) {
   stroke: #2563eb !important;
   filter: drop-shadow(0 0 20px rgba(37, 99, 235, 0.8)) !important;
 }
 
+:deep(.map-svg [data-type="living"].type-highlighted),
 :deep(.map-svg [data-type="living"].filtered-in) {
   stroke: #059669 !important;
   filter: drop-shadow(0 0 20px rgba(5, 150, 105, 0.8)) !important;
 }
 
+:deep(.map-svg [data-type="sports"].type-highlighted),
 :deep(.map-svg [data-type="sports"].filtered-in) {
   stroke: #d97706 !important;
   filter: drop-shadow(0 0 20px rgba(217, 119, 6, 0.8)) !important;
 }
 
+:deep(.map-svg [data-type="dining"].type-highlighted),
 :deep(.map-svg [data-type="dining"].filtered-in) {
   stroke: #dc2626 !important;
   filter: drop-shadow(0 0 20px rgba(220, 38, 38, 0.8)) !important;
 }
 
+:deep(.map-svg [data-type="administrative"].type-highlighted),
 :deep(.map-svg [data-type="administrative"].filtered-in) {
   stroke: #7c3aed !important;
   filter: drop-shadow(0 0 20px rgba(124, 58, 237, 0.8)) !important;
 }
 
-/* Стили для hover разных типов зданий */
-:deep(.map-svg [data-type="academic"].highlighted) {
-  stroke: #3b82f6; /* blue */
-  stroke-width: 4;
+/* Стили для текстовых элементов */
+:deep(#text-layer text) {
+  transition: opacity 0.3s ease, font-size 0.3s ease, font-weight 0.3s ease;
+  pointer-events: none;
+  user-select: none;
 }
 
-:deep(.map-svg [data-type="living"].highlighted) {
-  stroke: #10b981; /* green */
-  stroke-width: 4;
+/* Анимации */
+@keyframes search-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.02);
+    opacity: 0.9;
+  }
 }
 
-:deep(.map-svg [data-type="sports"].highlighted) {
-  stroke: #f59e0b; /* orange */
-  stroke-width: 4;
+@keyframes type-highlight {
+  0% {
+    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.3));
+  }
+  50% {
+    filter: drop-shadow(0 0 15px rgba(59, 130, 246, 0.6));
+  }
+  100% {
+    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.3));
+  }
 }
 
-:deep(.map-svg [data-type="dining"].highlighted) {
-  stroke: #ef4444; /* red */
-  stroke-width: 4;
+/* Стили для лучшей видимости при фильтрации */
+:deep(.map-svg [data-id].type-highlighted) {
+  animation: type-highlight 4s ease-in-out infinite;
 }
 
-:deep(.map-svg [data-type="administrative"].highlighted) {
-  stroke: #8b5cf6; /* purple */
-  stroke-width: 4;
-}
-
-/* Оптимизация для мобильных устройств */
+/* Адаптивные стили для мобильных устройств */
 @media (max-width: 768px) {
-  .map-viewer {
-    touch-action: none;
+  :deep(.map-svg [data-id]) {
+    stroke-width: 1.5 !important;
+  }
+  
+  :deep(.map-svg [data-id].selected) {
+    stroke-width: 2.5 !important;
+  }
+  
+  :deep(.map-svg [data-id].searched) {
+    stroke-width: 3 !important;
+  }
+  
+  :deep(#text-layer text) {
+    font-size: 12px !important;
+  }
+  
+  /* Отключаем анимации на мобильных для лучшей производительности */
+  :deep(.map-svg [data-id]) {
+    animation: none !important;
   }
 }
 
@@ -832,17 +1064,5 @@ svg text {
   stroke-linecap: round !important;
   filter: none !important;
     opacity: 1 !important;
-}
-
-/* Анимация для найденного здания */
-@keyframes search-pulse {
-  0%, 100% {
-    filter: drop-shadow(0 0 30px rgba(255, 215, 0, 1));
-    stroke-width: 8;
-  }
-  50% {
-    filter: drop-shadow(0 0 40px rgba(255, 215, 0, 1));
-    stroke-width: 10;
-  }
 }
 </style> 

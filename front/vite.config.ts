@@ -9,26 +9,16 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/api\./,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 5 * 60 // 5 minutes
-              }
-            }
-          }
+        maximumFileSizeToCacheInBytes: 50 * 1024 * 1024, // 50MB для SVG карт
+        globPatterns: [
+          '**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'
         ]
       },
       manifest: {
-        name: 'ПГУ Интерактивная карта',
-        short_name: 'ПГУ Карта',
-        description: 'Интерактивная карта Пермского государственного университета',
-        theme_color: '#1f2937',
+        name: 'Интерактивная карта ПГУ',
+        short_name: 'Карта ПГУ',
+        description: 'Интерактивная карта кампуса Пензенского государственного университета',
+        theme_color: '#3b82f6',
         background_color: '#ffffff',
         display: 'standalone',
         icons: [
@@ -52,11 +42,13 @@ export default defineConfig({
     }
   },
   build: {
+    // Упрощенная конфигурация для Docker
+    target: 'es2020',
+    minify: 'esbuild',
+    sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'svg-pan-zoom': ['svg-pan-zoom']
-        }
+        manualChunks: undefined // Убираем code splitting для упрощения
       }
     }
   },

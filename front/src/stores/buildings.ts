@@ -13,6 +13,28 @@ export interface Building {
   year_built?: number
   departments?: string[]
   amenities?: string[]
+  rooms?: Room[]
+  accessible?: boolean
+  has_elevator?: boolean
+  has_parking?: boolean
+}
+
+export interface Room {
+  number: string
+  floor: number
+  type: 'classroom' | 'lab' | 'office' | 'toilet' | 'cafe' | 'library' | 'auditorium' | 'other'
+  capacity?: number
+  equipment?: string[]
+  accessible?: boolean
+}
+
+export interface SearchResult {
+  type: 'building' | 'room' | 'amenity'
+  building: Building
+  room?: Room
+  amenity?: string
+  matchText: string
+  priority: number
 }
 
 export const useBuildingsStore = defineStore('buildings', () => {
@@ -29,7 +51,32 @@ export const useBuildingsStore = defineStore('buildings', () => {
   const lastFetchTime = ref<number>(0)
   const CACHE_DURATION = 5 * 60 * 1000 // 5 минут
 
+  // State для результатов поиска
+  const searchResults = ref<SearchResult[]>([])
+  const isSearching = ref(false)
+  
+  // Подсказки для поиска
+  const searchSuggestions = computed(() => [
+    'столовая', 'библиотека', 'аудитория 101', 'туалет', 'кафе', 'спортзал'
+  ])
+
+  // Метод для загрузки подсказок с сервера
+  const loadSearchSuggestions = async () => {
+    try {
+      const response = await axios.get('http://localhost:8000/api/suggestions')
+      return response.data
+    } catch (error) {
+      console.error('Ошибка загрузки подсказок:', error)
+      return [
+        'столовая', 'библиотека', 'аудитория 101', 'туалет', 
+        'кафе', 'спортзал', 'главный корпус', 'общежитие'
+      ]
+    }
+  }
+
   // Computed
+  const filteredSearchResults = computed(() => searchResults.value)
+  
   const filteredBuildings = computed(() => {
     let filtered = buildings.value
 
@@ -38,7 +85,7 @@ export const useBuildingsStore = defineStore('buildings', () => {
       filtered = filtered.filter(building => building.type === selectedType.value)
     }
 
-    // Поиск по названию (оптимизированный)
+    // Простой поиск по названию (для обратной совместимости)
     if (searchQuery.value.trim()) {
       const query = searchQuery.value.toLowerCase().trim()
       filtered = filtered.filter(building => 
@@ -49,6 +96,72 @@ export const useBuildingsStore = defineStore('buildings', () => {
 
     return filtered
   })
+
+  // Улучшенный поиск с поддержкой аудиторий
+  const performAdvancedSearch = (query: string): SearchResult[] => {
+    if (!query.trim()) return []
+    
+    const results: SearchResult[] = []
+    const searchTerm = query.toLowerCase().trim()
+    
+    buildings.value.forEach(building => {
+      // Поиск по названию здания
+      if (building.name.toLowerCase().includes(searchTerm)) {
+        results.push({
+          type: 'building',
+          building,
+          matchText: building.name,
+          priority: 1
+        })
+      }
+      
+      // Поиск по описанию здания
+      if (building.description?.toLowerCase().includes(searchTerm)) {
+        results.push({
+          type: 'building',
+          building,
+          matchText: building.description,
+          priority: 2
+        })
+      }
+      
+      // Поиск по аудиториям
+      if (building.rooms) {
+        building.rooms.forEach(room => {
+          if (room.number.toLowerCase().includes(searchTerm)) {
+            results.push({
+              type: 'room',
+              building,
+              room,
+              matchText: `Аудитория ${room.number}`,
+              priority: 1
+            })
+          }
+        })
+      }
+      
+      // Поиск по удобствам/услугам
+      if (building.amenities) {
+        building.amenities.forEach(amenity => {
+          if (amenity.toLowerCase().includes(searchTerm)) {
+            results.push({
+              type: 'amenity',
+              building,
+              amenity,
+              matchText: amenity,
+              priority: 3
+            })
+          }
+        })
+      }
+    })
+    
+    // Сортировка по приоритету и релевантности
+    return results.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority
+      return a.matchText.localeCompare(b.matchText)
+    }).slice(0, 10) // Ограничиваем до 10 результатов
+  }
 
   const buildingTypes = computed(() => [
     { key: 'all', label: 'Все здания', count: buildings.value.length },
@@ -167,6 +280,68 @@ export const useBuildingsStore = defineStore('buildings', () => {
     console.log('Выбран тип:', type)
   }
 
+  // Новые методы для расширенного поиска
+  const performSearchWithResults = async (query: string) => {
+    if (!query.trim()) {
+      clearSearchResults()
+      return
+    }
+
+    isSearching.value = true
+    
+    try {
+      // Убеждаемся что данные загружены
+      if (buildings.value.length === 0) {
+        console.log('Загружаем здания для поиска...')
+        await fetchBuildings()
+      }
+      
+      // Используем локальный поиск как основной
+      const localResults = performAdvancedSearch(query)
+      searchResults.value = localResults
+      
+      console.log(`Найдено ${localResults.length} результатов для запроса "${query}"`)
+      
+      // Попытка получить дополнительные результаты с сервера (если доступен)
+      try {
+        const response = await axios.get(`http://localhost:8000/api/search?q=${encodeURIComponent(query)}&limit=10`, {
+          timeout: 2000 // 2 секунды таймаут
+        })
+        
+        if (response.data?.results && Array.isArray(response.data.results)) {
+          // Объединяем результаты, избегая дублирования
+          const serverResults = response.data.results
+          const combinedResults = [...localResults]
+          
+          serverResults.forEach((serverResult: SearchResult) => {
+            const exists = combinedResults.some(local => 
+              local.building.id === serverResult.building.id && 
+              local.type === serverResult.type
+            )
+            if (!exists) {
+              combinedResults.push(serverResult)
+            }
+          })
+          
+          searchResults.value = combinedResults.slice(0, 10)
+        }
+      } catch (serverError) {
+        console.log('Сервер поиска недоступен, используем локальный поиск:', serverError)
+      }
+      
+    } catch (error) {
+      console.error('Ошибка поиска:', error)
+      searchResults.value = []
+    } finally {
+      isSearching.value = false
+    }
+  }
+
+  const clearSearchResults = () => {
+    searchResults.value = []
+    isSearching.value = false
+  }
+
   const clearCache = () => {
     buildingsCache.clear()
     lastFetchTime.value = 0
@@ -195,7 +370,17 @@ export const useBuildingsStore = defineStore('buildings', () => {
         floor_count: 4,
         year_built: 1916,
         departments: ["Ректорат", "Приемная комиссия", "Деканаты"],
-        amenities: ["Wi-Fi", "Кафе", "Банкомат", "Медпункт", "Библиотека"]
+        amenities: ["Wi-Fi", "Кафе", "Банкомат", "Медпункт", "Библиотека"],
+        accessible: true,
+        has_elevator: true,
+        has_parking: true,
+        rooms: [
+          { number: "101", floor: 1, type: "office", capacity: 10, equipment: ["Компьютер", "Проектор"], accessible: true },
+          { number: "102", floor: 1, type: "classroom", capacity: 30, equipment: ["Доска", "Проектор"], accessible: true },
+          { number: "103", floor: 1, type: "toilet", accessible: true },
+          { number: "201", floor: 2, type: "auditorium", capacity: 100, equipment: ["Микрофоны", "Проектор", "Звуковая система"], accessible: false },
+          { number: "202", floor: 2, type: "library", capacity: 50, equipment: ["Wi-Fi", "Компьютеры"], accessible: true }
+        ]
       },
       {
         id: "3",
@@ -231,7 +416,7 @@ export const useBuildingsStore = defineStore('buildings', () => {
         id: "7",
         name: "Корпус 7",
         type: "academic",
-        description: "Корпус экономического факультета",
+        description: "Корпус факультета вычислительной техники",
         floor_count: 4,
         year_built: 1990,
         departments: ["Экономический факультет", "Юридический факультет"],
@@ -322,10 +507,14 @@ export const useBuildingsStore = defineStore('buildings', () => {
     error,
     searchQuery,
     selectedType,
+    searchResults,
+    isSearching,
     
     // Computed
     filteredBuildings,
+    filteredSearchResults,
     buildingTypes,
+    searchSuggestions,
     
     // Actions
     fetchBuildings,
@@ -334,6 +523,10 @@ export const useBuildingsStore = defineStore('buildings', () => {
     setSearchQuery,
     setSelectedType,
     clearCache,
-    debouncedSearch
+    debouncedSearch,
+    performSearchWithResults,
+    clearSearchResults,
+    performAdvancedSearch,
+    loadSearchSuggestions
   }
 }) 
