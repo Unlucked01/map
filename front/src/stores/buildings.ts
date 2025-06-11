@@ -63,7 +63,7 @@ export const useBuildingsStore = defineStore('buildings', () => {
   // Метод для загрузки подсказок с сервера
   const loadSearchSuggestions = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/api/suggestions')
+      const response = await axios.get('/api/suggestions')
       return response.data
     } catch (error) {
       console.error('Ошибка загрузки подсказок:', error)
@@ -187,7 +187,7 @@ export const useBuildingsStore = defineStore('buildings', () => {
     console.log('Загружаем здания с сервера...')
 
     try {
-      const response = await axios.get('http://localhost:8000/api/buildings', {
+      const response = await axios.get('/api/buildings', {
         params: {
           query: searchQuery.value || undefined,
           type: selectedType.value !== 'all' ? selectedType.value : undefined
@@ -241,7 +241,7 @@ export const useBuildingsStore = defineStore('buildings', () => {
     error.value = null
 
     try {
-      const response = await axios.get(`http://localhost:8000/api/buildings/${id}`)
+      const response = await axios.get(`/api/buildings/${id}`)
       selectedBuilding.value = response.data
       
       // Обновление кэша
@@ -304,7 +304,7 @@ export const useBuildingsStore = defineStore('buildings', () => {
       
       // Попытка получить дополнительные результаты с сервера (если доступен)
       try {
-        const response = await axios.get(`http://localhost:8000/api/search?q=${encodeURIComponent(query)}&limit=10`, {
+        const response = await axios.get(`/api/search?q=${encodeURIComponent(query)}&limit=10`, {
           timeout: 2000 // 2 секунды таймаут
         })
         

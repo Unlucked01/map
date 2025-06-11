@@ -152,15 +152,14 @@ const loadSVG = async () => {
     loading.value = true
     console.log('Загружаем SVG...')
     
-    // Проверяем кэш браузера
+    // Используем кэш только в памяти для больших SVG файлов
     const cacheKey = 'map_svg_v1'
-    const cachedSvg = sessionStorage.getItem(cacheKey)
-    
     let svgText: string
     
-    if (cachedSvg) {
-      console.log('Используем кэшированный SVG')
-      svgText = cachedSvg
+    // Проверяем кэш в памяти (более быстрый доступ)
+    if ((window as any).__svgCache && (window as any).__svgCache[cacheKey]) {
+      console.log('Используем кэшированный SVG из памяти')
+      svgText = (window as any).__svgCache[cacheKey]
     } else {
       // Загружаем SVG файл
       const response = await fetch('/map.svg')
@@ -171,19 +170,17 @@ const loadSVG = async () => {
       svgText = await response.text()
       console.log('SVG загружен, размер:', svgText.length)
       
-      // Оптимизация SVG для улучшения производительности
+      // Легкая оптимизация SVG (не агрессивная, чтобы не повредить структуру)
       svgText = svgText
         .replace(/<!--[\s\S]*?-->/g, '') // Удаляем комментарии
-        .replace(/\s+/g, ' ') // Минифицируем пробелы
-        .replace(/>\s+</g, '><') // Удаляем пробелы между тегами
         .trim()
       
-      // Кэшируем в сессии
-      try {
-        sessionStorage.setItem(cacheKey, svgText)
-      } catch (e) {
-        console.warn('Не удалось кэшировать SVG:', e)
+      // Кэшируем в памяти (более надежно для больших файлов)
+      if (!(window as any).__svgCache) {
+        (window as any).__svgCache = {}
       }
+      (window as any).__svgCache[cacheKey] = svgText
+      console.log('SVG сохранен в кэш памяти')
     }
     
     svgContent.value = svgText
