@@ -28,11 +28,42 @@ docker-compose -f docker-compose.prod.yml build --no-cache
 # Этап 1: Запуск с временной HTTP конфигурацией
 echo -e "${YELLOW}🔧 Этап 1: Запускаем с временной HTTP конфигурацией...${NC}"
 
-# Переименовываем конфигурации
+# Сохраняем оригинальную конфигурацию
 if [ -f "nginx/conf.d/unl-map.conf" ]; then
     mv nginx/conf.d/unl-map.conf nginx/conf.d/unl-map.conf.backup
 fi
-mv nginx/conf.d/unl-map-temp.conf nginx/conf.d/unl-map.conf
+
+# Создаем временную конфигурацию только для HTTP
+cat > nginx/conf.d/unl-map.conf << 'EOF'
+# Временная конфигурация только для HTTP (для получения SSL сертификата)
+server {
+    listen 80;
+    server_name unl-map.duckdns.org;
+
+    # Let's Encrypt challenge
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        try_files $uri =404;
+    }
+
+    # Временно отдаем базовый ответ для всех остальных запросов
+    location / {
+        return 200 'SSL certificate setup in progress...';
+        add_header Content-Type text/plain;
+    }
+}
+
+# Upstream для внутренних сервисов (пока не используются)
+upstream frontend {
+    server frontend:80;
+    keepalive 32;
+}
+
+upstream backend {
+    server backend:8000;
+    keepalive 32;
+}
+EOF
 
 # Запускаем сервисы
 docker-compose -f docker-compose.prod.yml up -d nginx frontend backend
@@ -78,9 +109,11 @@ fi
 echo -e "${YELLOW}🔄 Этап 3: Переключаемся на полную конфигурацию с SSL...${NC}"
 
 # Восстанавливаем полную конфигурацию
-mv nginx/conf.d/unl-map.conf nginx/conf.d/unl-map-temp.conf
 if [ -f "nginx/conf.d/unl-map.conf.backup" ]; then
     mv nginx/conf.d/unl-map.conf.backup nginx/conf.d/unl-map.conf
+else
+    echo -e "${RED}❌ Файл резервной копии не найден!${NC}"
+    exit 1
 fi
 
 # Перезапускаем nginx с новой конфигурацией
