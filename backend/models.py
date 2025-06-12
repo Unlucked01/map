@@ -10,6 +10,7 @@ class RoomType(str, Enum):
     CAFE = "cafe"
     LIBRARY = "library"
     AUDITORIUM = "auditorium"
+    ROOM = "room"  # Комнаты в общежитиях
     OTHER = "other"
 
 class Room(BaseModel):
