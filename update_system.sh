@@ -134,7 +134,7 @@ if [ -f "backend/requirements.txt" ]; then
         check_command "Зависимости Python обновлены" "Ошибка при обновлении зависимостей Python"
     else
         log_warning "Виртуальное окружение не найдено, используем системный Python"
-        pip3 install -r backend/requirements.txt
+        pip install -r backend/requirements.txt
     fi
 else
     log_warning "requirements.txt не найден, пропускаем обновление зависимостей"
