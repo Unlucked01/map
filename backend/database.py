@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import logging
+import os
 from typing import List, Optional, Dict, Any
 from models import Building, Room, RoomType
 from pgu_real_data import get_pgu_real_data
@@ -8,8 +9,22 @@ from pgu_real_data import get_pgu_real_data
 logger = logging.getLogger(__name__)
 
 class Database:
-    def __init__(self, db_path: str = "university_map.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            # Получаем путь из переменной окружения или используем значение по умолчанию
+            database_url = os.getenv('DATABASE_URL', 'sqlite:///university_map.db')
+            if database_url.startswith('sqlite:///'):
+                self.db_path = database_url[10:]  # Убираем 'sqlite:///' префикс
+            else:
+                self.db_path = "university_map.db"
+        else:
+            self.db_path = db_path
+        
+        # Создаем директорию для базы данных если её нет
+        db_dir = os.path.dirname(self.db_path)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+            
         self.init_database()
         self.populate_initial_data()
     
