@@ -7,8 +7,10 @@ WORKDIR /app
 # Копирование файлов зависимостей
 COPY package*.json ./
 
-# Установка зависимостей
-RUN npm ci
+# Полная переустановка зависимостей (решение проблемы с rollup)
+RUN rm -rf node_modules package-lock.json && \
+    npm install --production=false && \
+    npm cache clean --force
 
 # Копирование исходного кода
 COPY . .
