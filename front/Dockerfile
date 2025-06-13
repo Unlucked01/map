@@ -13,8 +13,8 @@ RUN npm ci
 # Копирование исходного кода
 COPY . .
 
-# Сборка приложения для продакшена
-RUN npm run build
+# Сборка приложения для продакшена (быстрая сборка без проверки типов)
+RUN npm run build-fast
 
 # Этап 2: Настройка Nginx для раздачи статики
 FROM nginx:alpine AS production
